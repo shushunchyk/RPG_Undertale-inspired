@@ -13,12 +13,13 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     boolean isRunning = false;
 
     // --- Game States ---
-    final int STRIKE_PHASE = 0;
-    final int DIALOGUE_PHASE = 1;
-    final int EVASION_PHASE = 2;
-    final int VICTORY_PHASE = 3;
-    final int GAMEOVER_PHASE = 4;
-    int currentState = STRIKE_PHASE;
+    final int INTRO_PHASE = 0;    // Dialogue before the level starts
+    final int STRIKE_PHASE = 1;   // The QTE Attack Meter
+    final int DIALOGUE_PHASE = 2; // Boss reaction after being hit
+    final int EVASION_PHASE = 3;  // The bullet dodging phase
+    final int VICTORY_PHASE = 4;
+    final int GAMEOVER_PHASE = 5;
+    int currentState = INTRO_PHASE;
 
     // Entities & Patterns
     Player player;
@@ -37,13 +38,13 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     // Dialogue Variables
     String currentDialogue = "";
     String[] bossQuotes = {
-            "Is that all you've got? I've seen toddlers with more fighting spirit than you.",
-            "A lucky hit... but luck eventually runs out, doesn't it?",
-            "You'll have to try harder! My grandmother hits harder than that.",
-            "Tch... annoying pest. I'll squash you like the bug you are.",
-            "Your end is near! Can you feel the cold breath of the abyss?"
+            "Is that all you've got?",
+            "A lucky hit...",
+            "Tch... annoying pest.",
+            "You'll have to try harder!",
+            "Your end is near!"
     };
-    String defeatDialogue = "Impossible... how could I lose to a mere mortal like you?! This wasn't supposed to happen...";
+    String defeatDialogue = "Impossible... how could I lose to a mere mortal?!";
     Random rand = new Random();
 
     // Progression
@@ -57,63 +58,43 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         this.setDoubleBuffered(true);
         this.addKeyListener(this);
         this.setFocusable(true);
-        // CREATE THE PLAYER HERE (Once per game session)
+
         player = new Player(290, 600);
         setupLevel();
     }
 
     public void setupLevel() {
         player.resetPosition(290, 600);
-        enemy = new Enemy(270, 50, 50 + (level * 20));
-        qteBarX = meterX + 5; // Start slightly inside the box
-        qteDirection = 1;    // Explicitly force it to move RIGHT at the start
         projectiles.clear();
         currentPatterns.clear();
-        // HARDCODED ENEMY ATTACK SCHEMES
-        switch(level) {
-            case 1:
-                enemy = new Enemy(270, 50, 60); // Basic Boss
-                currentDialogue = "I'll start easy on you...";
-                currentPatterns.add(new AimedShotPattern(4.0));
-                break;
 
-            case 2:
-                enemy = new Enemy(270, 50, 100); // The Wall Boss
-                currentDialogue = "Can you find the opening?";
-                currentPatterns.add(new WallAttackPattern());
-                break;
+        // Reset QTE Bar and force start direction
+        qteBarX = meterX + 5;
+        qteDirection = 1;
 
-            case 3:
-                enemy = new Enemy(270, 50, 150); // The Hunter
-                currentDialogue = "My magic will find you!";
-                // Custom Follower logic
-                currentPatterns.add((ex, ey, p) -> {
-                    ArrayList<Projectile> b = new ArrayList<>();
-                    b.add(new FollowingProjectilePattern(ex + 25, ey + 25, p, 4.0f));
-                    return b;
-                });
-                break;
-
-            case 4:
-                enemy = new Enemy(270, 50, 200); // The Executioner
-                currentDialogue = "STAY. STILL.";
-                // Custom Laser logic
-                currentPatterns.add((ex, ey, p) -> {
-                    ArrayList<Projectile> b = new ArrayList<>();
-                    // Spawns a vertical laser on player's current X
-                    b.add(new LaserAttackPattern(p.getX() - 10, 200, 40, 400));
-                    return b;
-                });
-                break;
-
-            default:
-                enemy = new Enemy(270, 50, 300);
-                currentDialogue = "You've survived too long!";
-                currentPatterns.add(new RadialBurstPattern(12, 5.0));
-                currentPatterns.add(new WallAttackPattern());
-                break;
+        // --- Tiered HP & Pattern Setup ---
+        int enemyHp;
+        if (level <= 5) {
+            enemyHp = (level == 5) ? 50 : 25;
+            currentDialogue = (level == 5) ? "I am the first wall you cannot climb!" : "Just a warm up...";
+            currentPatterns.add(new AimedShotPattern(3.5));
+        } else if (level <= 10) {
+            enemyHp = (level == 10) ? 60 : 30;
+            currentDialogue = (level == 10) ? "The walls are closing in!" : "Watch the gaps...";
+            currentPatterns.add(new WallAttackPattern());
+        } else if (level <= 15) {
+            enemyHp = (level == 15) ? 80 : 40;
+            currentDialogue = (level == 15) ? "BEHOLD THE LIGHT!" : "Don't blink.";
+            currentPatterns.add(new LaserAttackPattern());
+        } else {
+            enemyHp = 100 + (level * 5);
+            currentDialogue = "You've survived... too long.";
+            currentPatterns.add(new AimedShotPattern(5.0));
+            currentPatterns.add(new LaserAttackPattern());
         }
-        currentState = STRIKE_PHASE;
+
+        enemy = new Enemy(270, 50, enemyHp);
+        currentState = INTRO_PHASE; // Start level with dialogue
     }
 
     public void startGameThread() {
@@ -141,7 +122,8 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     public void update() {
         if (currentState == STRIKE_PHASE) {
             qteBarX += qteSpeed * qteDirection;
-            if (qteBarX >= meterX + meterWidth || qteBarX <= meterX) qteDirection *= -1;
+            if (qteBarX > meterX + meterWidth) { qteBarX = meterX + meterWidth; qteDirection = -1; }
+            else if (qteBarX < meterX) { qteBarX = meterX; qteDirection = 1; }
         }
         else if (currentState == EVASION_PHASE) {
             player.update();
@@ -167,7 +149,7 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
 
             evasionTimer++;
             if (evasionTimer > 300) {
-                currentState = STRIKE_PHASE;
+                currentState = STRIKE_PHASE; // Return to Strike after Evasion
                 evasionTimer = 0;
                 projectiles.clear();
             }
@@ -181,21 +163,18 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         if (player.getY() > 570) player.setY(570);
     }
 
-    // --- HELPER METHOD: Text Wrapping ---
     private void drawWrappedString(Graphics2D g2, String text, int x, int y, int maxWidth) {
         FontMetrics fm = g2.getFontMetrics();
         String[] words = text.split(" ");
         StringBuilder line = new StringBuilder();
-        int lineHeight = fm.getHeight();
         int currentY = y;
-
         for (String word : words) {
             if (fm.stringWidth(line + word) < maxWidth) {
                 line.append(word).append(" ");
             } else {
                 g2.drawString(line.toString(), x, currentY);
                 line = new StringBuilder(word + " ");
-                currentY += lineHeight;
+                currentY += fm.getHeight();
             }
         }
         g2.drawString(line.toString(), x, currentY);
@@ -209,14 +188,22 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         g2.setColor(Color.WHITE);
         g2.setFont(new Font("Monospaced", Font.BOLD, 18));
 
-        // HUD
         g2.drawString("Level: " + level, 20, 30);
         g2.drawString("Player HP: " + player.getHp(), 20, 750);
         g2.drawString("Boss HP: " + enemy.getHp(), 450, 30);
 
         enemy.render(g2);
 
-        if (currentState == STRIKE_PHASE) {
+        if (currentState == INTRO_PHASE || currentState == DIALOGUE_PHASE || currentState == VICTORY_PHASE) {
+            g2.setStroke(new BasicStroke(3));
+            g2.drawRect(100, 200, 400, 300);
+            drawWrappedString(g2, currentDialogue, 130, 280, 340);
+
+            String prompt = (currentState == VICTORY_PHASE) ? "[SPACE] NEXT LEVEL" : "[ENTER] CONTINUE";
+            g2.setFont(new Font("Monospaced", Font.PLAIN, 14));
+            g2.drawString(prompt, 220, 470);
+        }
+        else if (currentState == STRIKE_PHASE) {
             g2.drawRect(meterX, meterY, meterWidth, 40);
             g2.setColor(Color.YELLOW);
             g2.fillRect(meterX + (meterWidth / 2) - 10, meterY, 20, 40);
@@ -224,22 +211,6 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
             g2.fillRect((int)qteBarX, meterY - 5, 10, 50);
             g2.setColor(Color.WHITE);
             g2.drawString("PRESS [ENTER] TO STRIKE!", 170, 630);
-        }
-        else if (currentState == DIALOGUE_PHASE || currentState == VICTORY_PHASE) {
-            // Draw Wide Dialogue Box (4:3 aspect box)
-            g2.setStroke(new BasicStroke(3));
-            g2.drawRect(100, 200, 400, 300);
-
-            // Draw wrapped text inside the box boundaries
-            drawWrappedString(g2, currentDialogue, 130, 260, 340);
-
-            if (currentState == DIALOGUE_PHASE) {
-                g2.setFont(new Font("Monospaced", Font.PLAIN, 14));
-                g2.drawString("[Press ENTER to Continue]", 200, 470);
-            } else {
-                g2.setColor(Color.GREEN);
-                g2.drawString("[Victory! Press SPACE for Next Level]", 130, 470);
-            }
         }
         else if (currentState == EVASION_PHASE) {
             g2.drawRect(100, 200, 400, 400);
@@ -256,34 +227,36 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     public void keyPressed(KeyEvent e) {
         int code = e.getKeyCode();
 
-        if (currentState == STRIKE_PHASE && code == KeyEvent.VK_ENTER) {
-            int center = meterX + (meterWidth / 2);
-            float accuracy = 1.0f - (Math.abs(qteBarX - center) / (meterWidth / 2f));
-            int damage = (int)(25 * accuracy);
-            if (damage < 5) damage = 5;
-
-            enemy.takeDamage(damage);
-
-            if (enemy.getHp() <= 0) {
-                currentDialogue = defeatDialogue;
-                currentState = VICTORY_PHASE;
-            } else {
-                currentDialogue = bossQuotes[rand.nextInt(bossQuotes.length)];
-                currentState = DIALOGUE_PHASE;
+        if (code == KeyEvent.VK_ENTER) {
+            if (currentState == INTRO_PHASE) {
+                currentState = STRIKE_PHASE; // Move to strike from intro
             }
-        }
-        else if (currentState == DIALOGUE_PHASE && code == KeyEvent.VK_ENTER) {
-            currentState = EVASION_PHASE;
-            player.setX(290); player.setY(390);
+            else if (currentState == STRIKE_PHASE) {
+                // Damage Calculation (Nerfed to 1-25 range)
+                int center = meterX + (meterWidth / 2);
+                float accuracy = 1.0f - (Math.abs(qteBarX - center) / (meterWidth / 2f));
+                if (accuracy < 0) accuracy = 0;
+
+                int damage = (int)(24 * accuracy) + 1;
+                enemy.takeDamage(damage);
+
+                if (enemy.getHp() <= 0) {
+                    currentDialogue = defeatDialogue;
+                    currentState = VICTORY_PHASE;
+                } else {
+                    currentDialogue = bossQuotes[rand.nextInt(bossQuotes.length)];
+                    currentState = DIALOGUE_PHASE;
+                }
+            }
+            else if (currentState == DIALOGUE_PHASE) {
+                currentState = EVASION_PHASE; // Start dodging AFTER dialogue
+                player.setX(290); player.setY(390);
+            }
         }
 
         if (code == KeyEvent.VK_SPACE) {
             if (currentState == VICTORY_PHASE) { level++; setupLevel(); }
-            if (currentState == GAMEOVER_PHASE && code == KeyEvent.VK_SPACE) {
-                level = 1;
-                player.setHp(100); // Manually heal only when restarting the whole game
-                setupLevel();
-            }
+            if (currentState == GAMEOVER_PHASE) { level = 1; player.setHp(100); setupLevel(); }
         }
 
         if (currentState == EVASION_PHASE) {
