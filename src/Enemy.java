@@ -1,42 +1,34 @@
 import java.awt.Color;
 import java.awt.Graphics;
 
-/**
- * Represents the boss/adversary in the game.
- * Demonstrates Inheritance, Encapsulation, and Overloading.
- */
 public class Enemy extends GameObject {
     private int hp;
+    private int maxHp;
 
     /**
      * Default constructor for a basic enemy.
-     * Demonstrates Compile-time Polymorphism (Overloading).
-     * Initializes the enemy with a default of 50 HP.
-     * @param x The starting X coordinate.
-     * @param y The starting Y coordinate.
      */
     public Enemy(float x, float y) {
-        this(x, y, 50); // Calls the overloaded constructor below
+        this(x, y, 50);
     }
 
     /**
      * Overloaded constructor for an enemy with custom health points.
-     * @param x  The starting X coordinate.
-     * @param y  The starting Y coordinate.
-     * @param hp The custom starting health points.
      */
     public Enemy(float x, float y, int hp) {
-        super(x, y, 60, 60); // 60x60 pixel boss
+        super(x, y, 60, 60);
         this.hp = hp;
+        this.maxHp = hp; // Initialize maxHp to the starting value
     }
 
-    // --- Encapsulated Health Management ---
-    public int getHp() {
-        return hp;
-    }
+    // ---- Encapsulated Health Management ---
+    public int getHp() { return hp; }
+    public int getMaxHp() { return maxHp; } // Added getter for maxHp
 
     public void setHp(int hp) {
         this.hp = hp;
+        // Ensure maxHp is equal to current hp
+        if (this.hp > maxHp) maxHp = this.hp;
     }
 
     public void takeDamage(int amount) {
@@ -46,11 +38,9 @@ public class Enemy extends GameObject {
 
     @Override
     public void update() {
-        // --- AI & Logic ---
         x += velX;
         y += velY;
 
-        // Simple patrol bouncing between X coordinates
         if (x <= 0 || x >= 800 - width) {
             velX *= -1;
         }
@@ -58,24 +48,28 @@ public class Enemy extends GameObject {
 
     @Override
     public void render(Graphics g) {
-        // Draw the Enemy Body
+        // Draw Enemy Body
         g.setColor(Color.RED);
         g.fillRect((int)x, (int)y, width, height);
 
-        // Draw Health Bar Background
+        // Health Bar Background
         g.setColor(Color.DARK_GRAY);
         g.fillRect((int)x, (int)y - 15, width, 8);
 
-        // Draw Actual Health (Green)
+        // --- DYNAMIC HEALTH BAR ----
         g.setColor(Color.GREEN);
-        int healthBarWidth = (int)((hp / 50.0) * width);
 
+        // Use (double) to ensure decimal precision during division,
+        // then multiply by the total width of the object.
+        int healthBarWidth = (int)(((double)hp / maxHp) * width);
+
+        // Safety clamps
         if (healthBarWidth > width) healthBarWidth = width;
         if (healthBarWidth < 0) healthBarWidth = 0;
 
         g.fillRect((int)x, (int)y - 15, healthBarWidth, 8);
 
-        // Draw Health Bar Outline
+        // Health Bar Outline
         g.setColor(Color.WHITE);
         g.drawRect((int)x, (int)y - 15, width, 8);
     }
