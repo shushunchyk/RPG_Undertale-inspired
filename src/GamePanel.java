@@ -57,11 +57,13 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         this.setDoubleBuffered(true);
         this.addKeyListener(this);
         this.setFocusable(true);
+        // CREATE THE PLAYER HERE (Once per game session)
+        player = new Player(290, 600);
         setupLevel();
     }
 
     public void setupLevel() {
-        player = new Player(290, 600);
+        player.resetPosition(290, 600);
         enemy = new Enemy(270, 50, 50 + (level * 20));
         qteBarX = meterX + 5; // Start slightly inside the box
         qteDirection = 1;    // Explicitly force it to move RIGHT at the start
@@ -235,7 +237,11 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
 
         if (code == KeyEvent.VK_SPACE) {
             if (currentState == VICTORY_PHASE) { level++; setupLevel(); }
-            if (currentState == GAMEOVER_PHASE) { level = 1; setupLevel(); }
+            if (currentState == GAMEOVER_PHASE && code == KeyEvent.VK_SPACE) {
+                level = 1;
+                player.setHp(100); // Manually heal only when restarting the whole game
+                setupLevel();
+            }
         }
 
         if (currentState == EVASION_PHASE) {
