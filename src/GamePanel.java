@@ -3,27 +3,22 @@ import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.util.ArrayList;
+import java.util.Random;
 
 public class GamePanel extends JPanel implements Runnable, KeyListener {
-    // Screen settings
     final int screenWidth = 600;
     final int screenHeight = 800;
 
-    // Game Thread
     Thread gameThread;
     boolean isRunning = false;
 
-    // Game States
+    // --- Game States ---
     final int STRIKE_PHASE = 0;
-    final int EVASION_PHASE = 1;
-    final int VICTORY_PHASE = 2;
-    final int GAMEOVER_PHASE = 3;
+    final int DIALOGUE_PHASE = 1;
+    final int EVASION_PHASE = 2;
+    final int VICTORY_PHASE = 3;
+    final int GAMEOVER_PHASE = 4;
     int currentState = STRIKE_PHASE;
-
-    // Progression
-    int level = 1;
-    int evasionTimer = 0;
-    int patternCooldown = 0; // Controls how fast patterns trigger
 
     // Entities & Patterns
     Player player;
@@ -31,30 +26,49 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     ArrayList<Projectile> projectiles = new ArrayList<>();
     ArrayList<AttackPattern> currentPatterns = new ArrayList<>();
 
+    // QTE Variables
+    float qteBarX;
+    float qteSpeed = 8.0f;
+    int qteDirection = 1;
+    int meterWidth = 400;
+    int meterX = 100;
+    int meterY = 550;
+
+    // Dialogue Variables
+    String currentDialogue = "";
+    String[] bossQuotes = {
+            "Is that all you've got? I've seen toddlers with more fighting spirit than you.",
+            "A lucky hit... but luck eventually runs out, doesn't it?",
+            "You'll have to try harder! My grandmother hits harder than that.",
+            "Tch... annoying pest. I'll squash you like the bug you are.",
+            "Your end is near! Can you feel the cold breath of the abyss?"
+    };
+    String defeatDialogue = "Impossible... how could I lose to a mere mortal like you?! This wasn't supposed to happen...";
+    Random rand = new Random();
+
+    // Progression
+    int level = 1;
+    int evasionTimer = 0;
+    int patternCooldown = 0;
+
     public GamePanel() {
         this.setPreferredSize(new Dimension(screenWidth, screenHeight));
         this.setBackground(Color.BLACK);
         this.setDoubleBuffered(true);
         this.addKeyListener(this);
         this.setFocusable(true);
-
         setupLevel();
     }
 
-    // Sets up the boss and patterns based on current level
     public void setupLevel() {
-        player = new Player(290, 600); // Reset player position
-        enemy = new Enemy(270, 50, 50 + (level * 20)); // Boss gets +20 HP per level
-
+        player = new Player(290, 600);
+        enemy = new Enemy(270, 50, 50 + (level * 20));
+        qteBarX = meterX + 5; // Start slightly inside the box
+        qteDirection = 1;    // Explicitly force it to move RIGHT at the start
         projectiles.clear();
         currentPatterns.clear();
-
-        // Add patterns based on level difficulty
-        currentPatterns.add(new AimedShotPattern(3 + level)); // Faster shots per level
-        if (level >= 2) {
-            currentPatterns.add(new RadialBurstPattern(8 + level, 3.0));
-        }
-
+        currentPatterns.add(new AimedShotPattern(3 + level));
+        if (level >= 2) currentPatterns.add(new RadialBurstPattern(8 + level, 3.0));
         currentState = STRIKE_PHASE;
     }
 
@@ -68,7 +82,6 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     public void run() {
         double drawInterval = 1000000000 / 60;
         double nextDrawTime = System.nanoTime() + drawInterval;
-
         while (isRunning) {
             update();
             repaint();
@@ -82,24 +95,25 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     }
 
     public void update() {
-        if (currentState == EVASION_PHASE) {
+        if (currentState == STRIKE_PHASE) {
+            qteBarX += qteSpeed * qteDirection;
+            if (qteBarX >= meterX + meterWidth || qteBarX <= meterX) qteDirection *= -1;
+        }
+        else if (currentState == EVASION_PHASE) {
             player.update();
             keepPlayerInBox();
 
-            // Handle Attack Patterns
             patternCooldown++;
-            if (patternCooldown > 60) { // Every 1 second
+            if (patternCooldown > 60) {
                 for (AttackPattern pattern : currentPatterns) {
                     projectiles.addAll(pattern.generateAttack((int)enemy.getX(), (int)enemy.getY(), player));
                 }
                 patternCooldown = 0;
             }
 
-            // Update Projectiles
             for (int i = 0; i < projectiles.size(); i++) {
                 Projectile p = projectiles.get(i);
                 p.update();
-
                 if (p.getBounds().intersects(player.getBounds())) {
                     player.takeDamage(5);
                     projectiles.remove(i);
@@ -107,7 +121,6 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
                 }
             }
 
-            // Phase Timer
             evasionTimer++;
             if (evasionTimer > 300) {
                 currentState = STRIKE_PHASE;
@@ -124,36 +137,75 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         if (player.getY() > 570) player.setY(570);
     }
 
+    // --- HELPER METHOD: Text Wrapping ---
+    private void drawWrappedString(Graphics2D g2, String text, int x, int y, int maxWidth) {
+        FontMetrics fm = g2.getFontMetrics();
+        String[] words = text.split(" ");
+        StringBuilder line = new StringBuilder();
+        int lineHeight = fm.getHeight();
+        int currentY = y;
+
+        for (String word : words) {
+            if (fm.stringWidth(line + word) < maxWidth) {
+                line.append(word).append(" ");
+            } else {
+                g2.drawString(line.toString(), x, currentY);
+                line = new StringBuilder(word + " ");
+                currentY += lineHeight;
+            }
+        }
+        g2.drawString(line.toString(), x, currentY);
+    }
+
     @Override
     public void paintComponent(Graphics g) {
         super.paintComponent(g);
-        g.setColor(Color.WHITE);
-        g.setFont(new Font("Arial", Font.BOLD, 18));
+        Graphics2D g2 = (Graphics2D) g;
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("Monospaced", Font.BOLD, 18));
 
         // HUD
-        g.drawString("Level: " + level, 20, 30);
-        g.drawString("Player HP: " + player.getHp(), 20, 750);
-        g.drawString("Boss HP: " + enemy.getHp(), 450, 30);
+        g2.drawString("Level: " + level, 20, 30);
+        g2.drawString("Player HP: " + player.getHp(), 20, 750);
+        g2.drawString("Boss HP: " + enemy.getHp(), 450, 30);
+
+        enemy.render(g2);
 
         if (currentState == STRIKE_PHASE) {
-            enemy.render(g);
-            g.drawString("STRIKE PHASE: Press [ENTER] to Attack!", 140, 400);
+            g2.drawRect(meterX, meterY, meterWidth, 40);
+            g2.setColor(Color.YELLOW);
+            g2.fillRect(meterX + (meterWidth / 2) - 10, meterY, 20, 40);
+            g2.setColor(Color.CYAN);
+            g2.fillRect((int)qteBarX, meterY - 5, 10, 50);
+            g2.setColor(Color.WHITE);
+            g2.drawString("PRESS [ENTER] TO STRIKE!", 170, 630);
+        }
+        else if (currentState == DIALOGUE_PHASE || currentState == VICTORY_PHASE) {
+            // Draw Wide Dialogue Box (4:3 aspect box)
+            g2.setStroke(new BasicStroke(3));
+            g2.drawRect(100, 200, 400, 300);
+
+            // Draw wrapped text inside the box boundaries
+            drawWrappedString(g2, currentDialogue, 130, 260, 340);
+
+            if (currentState == DIALOGUE_PHASE) {
+                g2.setFont(new Font("Monospaced", Font.PLAIN, 14));
+                g2.drawString("[Press ENTER to Continue]", 200, 470);
+            } else {
+                g2.setColor(Color.GREEN);
+                g2.drawString("[Victory! Press SPACE for Next Level]", 130, 470);
+            }
         }
         else if (currentState == EVASION_PHASE) {
-            enemy.render(g);
-            g.drawRect(100, 200, 400, 400); // Battle Box
-            player.render(g);
-            for (Projectile p : projectiles) p.render(g);
-        }
-        else if (currentState == VICTORY_PHASE) {
-            g.setColor(Color.GREEN);
-            g.drawString("VICTORY! Press [SPACE] for Next Level", 140, 400);
+            g2.drawRect(100, 200, 400, 400);
+            player.render(g2);
+            for (Projectile p : projectiles) p.render(g2);
         }
         else if (currentState == GAMEOVER_PHASE) {
-            g.setColor(Color.RED);
-            g.drawString("GAME OVER. Press [SPACE] to Restart", 140, 400);
+            g2.setColor(Color.RED);
+            g2.drawString("GAME OVER. [SPACE] TO RESTART", 150, 400);
         }
-        g.dispose();
     }
 
     @Override
@@ -161,16 +213,26 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         int code = e.getKeyCode();
 
         if (currentState == STRIKE_PHASE && code == KeyEvent.VK_ENTER) {
-            enemy.takeDamage(15);
+            int center = meterX + (meterWidth / 2);
+            float accuracy = 1.0f - (Math.abs(qteBarX - center) / (meterWidth / 2f));
+            int damage = (int)(25 * accuracy);
+            if (damage < 5) damage = 5;
+
+            enemy.takeDamage(damage);
+
             if (enemy.getHp() <= 0) {
+                currentDialogue = defeatDialogue;
                 currentState = VICTORY_PHASE;
             } else {
-                currentState = EVASION_PHASE;
-                player.setX(290); player.setY(390); // Center player
+                currentDialogue = bossQuotes[rand.nextInt(bossQuotes.length)];
+                currentState = DIALOGUE_PHASE;
             }
         }
+        else if (currentState == DIALOGUE_PHASE && code == KeyEvent.VK_ENTER) {
+            currentState = EVASION_PHASE;
+            player.setX(290); player.setY(390);
+        }
 
-        // Progression Handling
         if (code == KeyEvent.VK_SPACE) {
             if (currentState == VICTORY_PHASE) { level++; setupLevel(); }
             if (currentState == GAMEOVER_PHASE) { level = 1; setupLevel(); }
