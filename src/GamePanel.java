@@ -69,8 +69,50 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         qteDirection = 1;    // Explicitly force it to move RIGHT at the start
         projectiles.clear();
         currentPatterns.clear();
-        currentPatterns.add(new AimedShotPattern(3 + level));
-        if (level >= 2) currentPatterns.add(new RadialBurstPattern(8 + level, 3.0));
+        // HARDCODED ENEMY ATTACK SCHEMES
+        switch(level) {
+            case 1:
+                enemy = new Enemy(270, 50, 60); // Basic Boss
+                currentDialogue = "I'll start easy on you...";
+                currentPatterns.add(new AimedShotPattern(4.0));
+                break;
+
+            case 2:
+                enemy = new Enemy(270, 50, 100); // The Wall Boss
+                currentDialogue = "Can you find the opening?";
+                currentPatterns.add(new WallAttackPattern());
+                break;
+
+            case 3:
+                enemy = new Enemy(270, 50, 150); // The Hunter
+                currentDialogue = "My magic will find you!";
+                // Custom Follower logic
+                currentPatterns.add((ex, ey, p) -> {
+                    ArrayList<Projectile> b = new ArrayList<>();
+                    b.add(new FollowingProjectilePattern(ex + 25, ey + 25, p, 4.0f));
+                    return b;
+                });
+                break;
+
+            case 4:
+                enemy = new Enemy(270, 50, 200); // The Executioner
+                currentDialogue = "STAY. STILL.";
+                // Custom Laser logic
+                currentPatterns.add((ex, ey, p) -> {
+                    ArrayList<Projectile> b = new ArrayList<>();
+                    // Spawns a vertical laser on player's current X
+                    b.add(new LaserAttackPattern(p.getX() - 10, 200, 40, 400));
+                    return b;
+                });
+                break;
+
+            default:
+                enemy = new Enemy(270, 50, 300);
+                currentDialogue = "You've survived too long!";
+                currentPatterns.add(new RadialBurstPattern(12, 5.0));
+                currentPatterns.add(new WallAttackPattern());
+                break;
+        }
         currentState = STRIKE_PHASE;
     }
 
