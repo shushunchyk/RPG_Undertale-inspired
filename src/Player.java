@@ -2,33 +2,82 @@ import java.awt.Color;
 import java.awt.Graphics;
 
 public class Player extends GameObject {
-    private int speed = 5;
-    public int hp = 100;
 
-    // Movement flags
-    public boolean up, down, left, right;
+    private int hp = 100; // Safely encapsulated health
 
-    public Player(int x, int y) {
-        super(x, y, 20, 20); // 20x20 pixel Spark
+    // --- Movement Flags ---
+    private boolean up = false;
+    private boolean down = false;
+    private boolean left = false;
+    private boolean right = false;
+
+    // --- Constructor 1 (Overloaded) ---
+    // Defaults to a 32x32 size if only X and Y are provided
+    public Player(float x, float y) {
+        this(x, y, 32, 32);
     }
 
+    // --- Constructor 2 (Main) ---
+    public Player(float x, float y, int width, int height) {
+        super(x, y, width, height);
+    }
+
+    // --- Safe HP Management ---
+    public int getHp() {
+        return hp;
+    }
+
+    public void setHp(int hp) {
+        this.hp = hp;
+    }
+
+    public void takeDamage(int amount) {
+        this.hp -= amount;
+        if (this.hp < 0) this.hp = 0;
+    }
+
+    // --- Movement Flag Getters and Setters ---
+    public boolean isUp() { return up; }
+    public void setUp(boolean up) { this.up = up; }
+
+    public boolean isDown() { return down; }
+    public void setDown(boolean down) { this.down = down; }
+
+    public boolean isLeft() { return left; }
+    public void setLeft(boolean left) { this.left = left; }
+
+    public boolean isRight() { return right; }
+    public void setRight(boolean right) { this.right = right; }
+
+    // --- Core Game Loop Methods ---
     @Override
     public void update() {
-        if (up) y -= speed;
-        if (down) y += speed;
-        if (left) x -= speed;
-        if (right) x += speed;
+        // 1. Check the flags and set velocity
+        if (up) {
+            velY = -5;
+        } else if (down) {
+            velY = 5;
+        } else {
+            velY = 0;
+        }
 
-        // Keep player in bounds (primitive 400x400 battle box)
-        if (x < 100) x = 100;
-        if (x > 480) x = 480;
-        if (y < 200) y = 200;
-        if (y > 580) y = 580;
+        if (right) {
+            velX = 5;
+        } else if (left) {
+            velX = -5;
+        } else {
+            velX = 0;
+        }
+
+        // 2. Apply the velocity to the actual position
+        x += velX;
+        y += velY;
     }
 
     @Override
     public void render(Graphics g) {
-        g.setColor(Color.RED);
-        g.fillRect(x, y, width, height);
+        g.setColor(Color.BLUE);
+        // Cast the float coordinates to ints just for drawing
+        g.fillRect((int)x, (int)y, width, height);
     }
 }
