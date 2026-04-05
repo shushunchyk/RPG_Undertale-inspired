@@ -9,20 +9,27 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     final int screenWidth = 600;
     final int screenHeight = 800;
 
-    // Game Thread & Loop
+    // Game Thread
     Thread gameThread;
     boolean isRunning = false;
 
     // Game States
     final int STRIKE_PHASE = 0;
     final int EVASION_PHASE = 1;
+    final int VICTORY_PHASE = 2;
+    final int GAMEOVER_PHASE = 3;
     int currentState = STRIKE_PHASE;
-    int evasionTimer = 0;
 
-    // Entities
+    // Progression
+    int level = 1;
+    int evasionTimer = 0;
+    int patternCooldown = 0; // Controls how fast patterns trigger
+
+    // Entities & Patterns
     Player player;
     Enemy enemy;
     ArrayList<Projectile> projectiles = new ArrayList<>();
+    ArrayList<AttackPattern> currentPatterns = new ArrayList<>();
 
     public GamePanel() {
         this.setPreferredSize(new Dimension(screenWidth, screenHeight));
@@ -31,9 +38,24 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         this.addKeyListener(this);
         this.setFocusable(true);
 
-        // Instantiate entities
-        player = new Player(300, 400);
-        enemy = new Enemy(270, 50);
+        setupLevel();
+    }
+
+    // Sets up the boss and patterns based on current level
+    public void setupLevel() {
+        player = new Player(290, 600); // Reset player position
+        enemy = new Enemy(270, 50, 50 + (level * 20)); // Boss gets +20 HP per level
+
+        projectiles.clear();
+        currentPatterns.clear();
+
+        // Add patterns based on level difficulty
+        currentPatterns.add(new AimedShotPattern(3 + level)); // Faster shots per level
+        if (level >= 2) {
+            currentPatterns.add(new RadialBurstPattern(8 + level, 3.0));
+        }
+
+        currentState = STRIKE_PHASE;
     }
 
     public void startGameThread() {
@@ -44,117 +66,130 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
 
     @Override
     public void run() {
-        // Basic 60 FPS Game Loop
         double drawInterval = 1000000000 / 60;
         double nextDrawTime = System.nanoTime() + drawInterval;
 
         while (isRunning) {
             update();
             repaint();
-
             try {
-                double remainingTime = nextDrawTime - System.nanoTime();
-                remainingTime = remainingTime / 1000000; // convert to milliseconds
+                double remainingTime = (nextDrawTime - System.nanoTime()) / 1000000;
                 if (remainingTime < 0) remainingTime = 0;
                 Thread.sleep((long) remainingTime);
                 nextDrawTime += drawInterval;
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+            } catch (InterruptedException e) { e.printStackTrace(); }
         }
     }
 
     public void update() {
-        if (currentState == STRIKE_PHASE) {
-            // Wait for player to press ENTER (handled in KeyListener)
-            projectiles.clear(); // Clear bullets when not in evasion
-        }
-        else if (currentState == EVASION_PHASE) {
+        if (currentState == EVASION_PHASE) {
             player.update();
+            keepPlayerInBox();
 
-            // Primitive projectile spawning (1 in 20 chance per frame)
-            if (Math.random() < 0.05) {
-                int randomX = (int)(Math.random() * 380) + 100;
-                projectiles.add(new Projectile(randomX, 200));
+            // Handle Attack Patterns
+            patternCooldown++;
+            if (patternCooldown > 60) { // Every 1 second
+                for (AttackPattern pattern : currentPatterns) {
+                    projectiles.addAll(pattern.generateAttack((int)enemy.getX(), (int)enemy.getY(), player));
+                }
+                patternCooldown = 0;
             }
 
-            // Update projectiles and check collisions
+            // Update Projectiles
             for (int i = 0; i < projectiles.size(); i++) {
                 Projectile p = projectiles.get(i);
                 p.update();
 
                 if (p.getBounds().intersects(player.getBounds())) {
-                    player.hp -= 10;
+                    player.takeDamage(5);
                     projectiles.remove(i);
+                    if (player.getHp() <= 0) currentState = GAMEOVER_PHASE;
                 }
             }
 
-            // End Evasion Phase after roughly 5 seconds (300 frames)
+            // Phase Timer
             evasionTimer++;
             if (evasionTimer > 300) {
                 currentState = STRIKE_PHASE;
                 evasionTimer = 0;
+                projectiles.clear();
             }
         }
+    }
+
+    private void keepPlayerInBox() {
+        if (player.getX() < 100) player.setX(100);
+        if (player.getX() > 470) player.setX(470);
+        if (player.getY() < 200) player.setY(200);
+        if (player.getY() > 570) player.setY(570);
     }
 
     @Override
     public void paintComponent(Graphics g) {
         super.paintComponent(g);
-
-        // Draw basic UI
         g.setColor(Color.WHITE);
-        g.drawString("Player HP: " + player.hp, 50, 750);
+        g.setFont(new Font("Arial", Font.BOLD, 18));
+
+        // HUD
+        g.drawString("Level: " + level, 20, 30);
+        g.drawString("Player HP: " + player.getHp(), 20, 750);
+        g.drawString("Boss HP: " + enemy.getHp(), 450, 30);
 
         if (currentState == STRIKE_PHASE) {
-            g.drawString("STRIKE PHASE: Press ENTER to Attack!", 200, 400);
             enemy.render(g);
+            g.drawString("STRIKE PHASE: Press [ENTER] to Attack!", 140, 400);
         }
         else if (currentState == EVASION_PHASE) {
             enemy.render(g);
-
-            // Draw Battle Box
-            g.setColor(Color.DARK_GRAY);
-            g.drawRect(100, 200, 400, 400);
-
+            g.drawRect(100, 200, 400, 400); // Battle Box
             player.render(g);
-            for (Projectile p : projectiles) {
-                p.render(g);
-            }
+            for (Projectile p : projectiles) p.render(g);
+        }
+        else if (currentState == VICTORY_PHASE) {
+            g.setColor(Color.GREEN);
+            g.drawString("VICTORY! Press [SPACE] for Next Level", 140, 400);
+        }
+        else if (currentState == GAMEOVER_PHASE) {
+            g.setColor(Color.RED);
+            g.drawString("GAME OVER. Press [SPACE] to Restart", 140, 400);
         }
         g.dispose();
     }
 
-    // Input Handling
     @Override
     public void keyPressed(KeyEvent e) {
         int code = e.getKeyCode();
 
         if (currentState == STRIKE_PHASE && code == KeyEvent.VK_ENTER) {
-            enemy.hp -= 10;
-            currentState = EVASION_PHASE;
-            // Reset player to center of battle box
-            player.x = 290;
-            player.y = 390;
+            enemy.takeDamage(15);
+            if (enemy.getHp() <= 0) {
+                currentState = VICTORY_PHASE;
+            } else {
+                currentState = EVASION_PHASE;
+                player.setX(290); player.setY(390); // Center player
+            }
+        }
+
+        // Progression Handling
+        if (code == KeyEvent.VK_SPACE) {
+            if (currentState == VICTORY_PHASE) { level++; setupLevel(); }
+            if (currentState == GAMEOVER_PHASE) { level = 1; setupLevel(); }
         }
 
         if (currentState == EVASION_PHASE) {
-            if (code == KeyEvent.VK_W || code == KeyEvent.VK_UP) player.up = true;
-            if (code == KeyEvent.VK_S || code == KeyEvent.VK_DOWN) player.down = true;
-            if (code == KeyEvent.VK_A || code == KeyEvent.VK_LEFT) player.left = true;
-            if (code == KeyEvent.VK_D || code == KeyEvent.VK_RIGHT) player.right = true;
+            if (code == KeyEvent.VK_W || code == KeyEvent.VK_UP) player.setUp(true);
+            if (code == KeyEvent.VK_S || code == KeyEvent.VK_DOWN) player.setDown(true);
+            if (code == KeyEvent.VK_A || code == KeyEvent.VK_LEFT) player.setLeft(true);
+            if (code == KeyEvent.VK_D || code == KeyEvent.VK_RIGHT) player.setRight(true);
         }
     }
 
-    @Override
-    public void keyReleased(KeyEvent e) {
+    @Override public void keyReleased(KeyEvent e) {
         int code = e.getKeyCode();
-        if (code == KeyEvent.VK_W || code == KeyEvent.VK_UP) player.up = false;
-        if (code == KeyEvent.VK_S || code == KeyEvent.VK_DOWN) player.down = false;
-        if (code == KeyEvent.VK_A || code == KeyEvent.VK_LEFT) player.left = false;
-        if (code == KeyEvent.VK_D || code == KeyEvent.VK_RIGHT) player.right = false;
+        if (code == KeyEvent.VK_W || code == KeyEvent.VK_UP) player.setUp(false);
+        if (code == KeyEvent.VK_S || code == KeyEvent.VK_DOWN) player.setDown(false);
+        if (code == KeyEvent.VK_A || code == KeyEvent.VK_LEFT) player.setLeft(false);
+        if (code == KeyEvent.VK_D || code == KeyEvent.VK_RIGHT) player.setRight(false);
     }
-
-    @Override
-    public void keyTyped(KeyEvent e) {}
+    @Override public void keyTyped(KeyEvent e) {}
 }
